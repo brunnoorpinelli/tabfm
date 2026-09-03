@@ -490,7 +490,15 @@
       </ul>
     </div>
   </div>
-  <p class="small" style="margin-top:18px">Padrão recomendado em fraude: <strong>TabFM para scoring em lote, triagem e novos padrões</strong>; modelo treinado/online para o bloqueio em tempo real na autorização. Os dois consomem as mesmas tabelas.</p>
+  <div class="cols l60" style="margin-top:18px;gap:22px">
+    <table style="font-size:14.5px">
+      <tr><th>Linhas rotuladas na janela de treino</th><th>Leitura prática</th></tr>
+      <tr><td>até ~150 mil</td><td>Faixa validada no benchmark TabArena (700 a 150 mil linhas). TabFM tende a igualar ou superar modelo treinado.</td></tr>
+      <tr><td>150 mil a alguns milhões</td><td>Funciona, mas o treino é amostrado automaticamente. Compare <code>AI.EVALUATE</code> × <code>ML.EVALUATE</code> antes de decidir.</td></tr>
+      <tr><td>dezenas de milhões</td><td>Modelo treinado aproveita melhor o volume. TabFM ainda útil para prototipar e para agentes.</td></tr>
+    </table>
+    <p class="small" style="margin:0">Não há número oficial para "pequeno a médio"; a faixa acima vem do benchmark usado pelo Google. O que conta é a <strong>janela passada na query</strong>, não o tamanho da tabela: em fraude, 90 a 180 dias com todas as fraudes e legítimas amostradas costuma caber na faixa validada.<br><br>Padrão recomendado: <strong>TabFM para scoring em lote, triagem e novos padrões</strong>; modelo treinado/online para bloqueio em tempo real na autorização.</p>
+  </div>
   <div class="footer"><span>TabFM no BigQuery</span><span>16</span></div>
 </section>
 
