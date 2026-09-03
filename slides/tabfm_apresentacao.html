@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TabFM no BigQuery · ML preditivo zero-shot com SQL</title>
+<style>
+  :root{
+    --bg:#0f1115; --surface:#181b22; --surface-2:#20242d; --ink:#f3f4f6; --ink-2:#c3c6cf; --ink-3:#8b90a0;
+    --blue:#3987e5; --orange:#d95926; --aqua:#199e70; --yellow:#c98500; --red:#e66767; --violet:#9085e9;
+    --border:#2b3040; --code:#0b0d12; --radius:14px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:"Google Sans",Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;font-size:18px;line-height:1.45}
+  .deck{position:relative;height:100vh;overflow:hidden}
+  .slide{position:absolute;inset:0;padding:56px 84px 72px;display:none;flex-direction:column;overflow:auto}
+  .slide.active{display:flex;animation:fade .25s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  h1{font-size:54px;line-height:1.08;margin:0 0 18px;font-weight:700;letter-spacing:-.5px}
+  h2{font-size:38px;margin:0 0 22px;font-weight:700;letter-spacing:-.3px}
+  h3{font-size:22px;margin:0 0 10px;color:var(--ink);font-weight:600}
+  p{margin:0 0 12px;color:var(--ink-2)}
+  .lead{font-size:24px;color:var(--ink-2);max-width:980px}
+  .kicker{font-size:14px;letter-spacing:.14em;text-transform:uppercase;color:var(--blue);font-weight:700;margin-bottom:12px}
+  .cols{display:grid;gap:28px}
+  .cols.two{grid-template-columns:1fr 1fr}
+  .cols.three{grid-template-columns:1fr 1fr 1fr}
+  .cols.l60{grid-template-columns:3fr 2fr}
+  .cols.l40{grid-template-columns:2fr 3fr}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:22px 24px}
+  .card h3{margin-top:0}
+  .card.accent{border-top:4px solid var(--blue)}
+  .card.warn{border-top:4px solid var(--orange)}
+  .card.ok{border-top:4px solid var(--aqua)}
+  ul{margin:0;padding-left:22px;color:var(--ink-2)}
+  li{margin:6px 0}
+  li strong,p strong{color:var(--ink)}
+  code{font-family:"JetBrains Mono","Roboto Mono",ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.92em;background:var(--surface-2);padding:2px 6px;border-radius:6px;color:#dfe3ea}
+  pre{margin:0;background:var(--code);border:1px solid var(--border);border-radius:12px;padding:18px 20px;overflow:auto;font-size:15.5px;line-height:1.5}
+  pre code{background:none;padding:0;font-size:inherit;color:#dfe3ea}
+  .k{color:#7fb4ff}.f{color:#ffb86b}.s{color:#9ce39c}.c{color:#7a8194;font-style:italic}.n{color:#e2a8ff}
+  table{border-collapse:collapse;width:100%;font-size:16.5px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:top;color:var(--ink-2)}
+  th{color:var(--ink);font-weight:600;background:var(--surface-2)}
+  td:first-child{color:var(--ink);font-weight:500}
+  .pill{display:inline-block;padding:3px 10px;border-radius:999px;font-size:13px;font-weight:600;letter-spacing:.02em}
+  .pill.blue{background:rgba(57,135,229,.18);color:#9cc4ff}
+  .pill.orange{background:rgba(217,89,38,.18);color:#ffb08a}
+  .pill.aqua{background:rgba(25,158,112,.18);color:#7fdcb9}
+  .stat{display:flex;flex-direction:column;gap:2px}
+  .stat .v{font-size:44px;font-weight:700;letter-spacing:-1px;color:var(--ink)}
+  .stat .l{font-size:14px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.08em}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:18px}
+  .flow{display:flex;align-items:stretch;gap:14px;flex-wrap:wrap}
+  .flow .step{flex:1;min-width:150px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;text-align:center}
+  .flow .step .t{font-weight:600;color:var(--ink)}
+  .flow .step .d{font-size:14px;color:var(--ink-3)}
+  .flow .sep{align-self:center;color:var(--ink-3);font-size:22px}
+  .footer{position:absolute;left:84px;right:84px;bottom:22px;display:flex;justify-content:space-between;font-size:13px;color:var(--ink-3)}
+  .progress{position:fixed;left:0;top:0;height:3px;background:var(--blue);width:0;transition:width .25s}
+  .nav{position:fixed;right:22px;bottom:18px;display:flex;gap:8px}
+  .nav button{background:var(--surface);color:var(--ink-2);border:1px solid var(--border);border-radius:8px;padding:6px 12px;cursor:pointer;font-size:14px}
+  .nav button:hover{color:var(--ink);border-color:var(--ink-3)}
+  .small{font-size:14.5px;color:var(--ink-3)}
+  .center{justify-content:center}
+  .bars{display:flex;flex-direction:column;gap:14px;margin-top:10px}
+  .bar{display:grid;grid-template-columns:230px 1fr 64px;align-items:center;gap:12px;font-size:15px;color:var(--ink-2)}
+  .bar .track{height:10px;background:var(--surface-2);border-radius:5px;overflow:hidden}
+  .bar .fill{height:100%;border-radius:5px}
+  .bar .val{text-align:right;color:var(--ink);font-variant-numeric:tabular-nums}
+  .legend{display:flex;gap:18px;font-size:14px;color:var(--ink-3);margin-top:8px}
+  .legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+  .check li::marker{color:var(--aqua)}
+  .cross li::marker{color:var(--orange)}
+  .tag{font-size:13px;color:var(--ink-3)}
+  @media print{.slide{display:flex!important;position:relative;height:100vh;page-break-after:always}.nav,.progress{display:none}}
+</style>
+</head>
+<body>
+<div class="progress" id="progress"></div>
+<div class="deck" id="deck">
+
+<!-- 1 CAPA -->
+<section class="slide center">
+  <div class="kicker">BigQuery ML · Preview</div>
+  <h1>TabFM no BigQuery<br><span style="color:var(--blue)">ML preditivo zero-shot, direto em SQL</span></h1>
+  <p class="lead">Classificação e regressão sobre dados tabulares sem treinar, ajustar ou implantar modelos. Caso de uso: <strong>detecção de fraude em instituição financeira</strong>.</p>
+  <div style="margin-top:34px;display:flex;gap:12px;flex-wrap:wrap">
+    <span class="pill blue">AI.PREDICT</span><span class="pill blue">AI.EVALUATE</span><span class="pill aqua">In-context learning</span><span class="pill orange">Sem CREATE MODEL</span>
+  </div>
+  <div class="footer"><span>Demo técnica · Colab Enterprise + BigQuery</span><span>1</span></div>
+</section>
+
+<!-- 2 AGENDA -->
+<section class="slide">
+  <div class="kicker">Agenda</div>
+  <h2>O que vamos ver</h2>
+  <div class="cols two">
+    <div class="card"><ol style="margin:0;padding-left:22px;color:var(--ink-2);font-size:20px;line-height:1.9">
+      <li>O problema do ciclo tradicional de ML</li>
+      <li>O que é o TabFM e como ele "aprende"</li>
+      <li>Como funciona dentro do BigQuery</li>
+      <li>Sintaxe: <code>AI.PREDICT</code> e <code>AI.EVALUATE</code></li>
+      <li>Demo: fraude em transações de cartão</li>
+    </ol></div>
+    <div class="card"><ol start="6" style="margin:0;padding-left:22px;color:var(--ink-2);font-size:20px;line-height:1.9">
+      <li>Resultados e adaptação sem re-treino</li>
+      <li>TabFM × BigQuery ML treinado × Vertex AI: quando usar cada um</li>
+      <li>Operacionalização e agentes</li>
+      <li>Custos, limites e próximos passos</li>
+    </ol></div>
+  </div>
+  <div class="footer"><span>TabFM no BigQuery</span><span>2</span></div>
+</section>
+
+<!-- 3 PROBLEMA -->
+<section class="slide">
+  <div class="kicker">Contexto</div>
+  <h2>O ciclo tradicional de ML tabular é caro e lento</h2>
+  <div class="flow" style="margin:10px 0 26px">
+    <div class="step"><div class="t">Feature engineering</div><div class="d">manual, por problema</div></div><div class="sep">›</div>
+    <div class="step"><div class="t">Treino</div><div class="d">XGBoost, RF, DNN</div></div><div class="sep">›</div>
+    <div class="step"><div class="t">Tuning</div><div class="d">hiperparâmetros, CV</div></div><div class="sep">›</div>
+    <div class="step"><div class="t">Deploy</div><div class="d">endpoint, versionamento</div></div><div class="sep">›</div>
+    <div class="step"><div class="t">Re-treino</div><div class="d">drift, novos padrões</div></div>
+  </div>
+  <div class="cols three">
+    <div class="card warn"><h3>Time especializado</h3><p>Cada problema preditivo exige cientista de dados, mesmo quando a pergunta é simples ("quem vai cancelar?").</p></div>
+    <div class="card warn"><h3>Tempo até o valor</h3><p>Semanas entre a pergunta de negócio e a primeira previsão confiável. Em fraude, padrões mudam antes disso.</p></div>
+    <div class="card warn"><h3>Custo operacional</h3><p>Modelos são artefatos: precisam de monitoramento, re-treino, governança e infraestrutura de serving.</p></div>
+  </div>
+  <div class="footer"><span>TabFM no BigQuery</span><span>3</span></div>
+</section>
+
+<!-- 4 O QUE É -->
+<section class="slide">
+  <div class="kicker">Conceito</div>
+  <h2>TabFM: um <em>foundation model</em> para tabelas</h2>
+  <div class="cols l60">
+    <div>
+      <p class="lead">Desenvolvido pelo Google Research e pré-treinado em enorme variedade de problemas tabulares. Faz <strong>classificação e regressão</strong> sem ajuste de parâmetros.</p>
+      <div class="card accent" style="margin-top:14px">
+        <h3>In-context learning, como em um LLM</h3>
+        <p>Um LLM aprende uma tarefa a partir de exemplos no prompt (<em>few-shot</em>). O TabFM lê sua <strong>tabela histórica como exemplos em contexto</strong> e gera previsões para a tabela alvo <strong>em um único passo</strong>.</p>
+        <p style="margin:0">Não existe fase de treino. O "modelo" é o próprio par <em>(dados rotulados, dados a prever)</em> que você passa na query.</p>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Características</h3>
+      <ul class="check">
+        <li><strong>Zero-shot:</strong> sem treino, tuning ou deploy</li>
+        <li><strong>Featurização automática:</strong> nulos, categóricas, escalas</li>
+        <li><strong>Tarefa inferida pelo tipo do rótulo:</strong> <code>BOOL</code>/<code>STRING</code> → classificação; numérico → regressão</li>
+        <li><strong>Estado da arte</strong> no benchmark TabArena, à frente de modelos clássicos e de outros foundation models tabulares</li>
+        <li><strong>Nativo do BigQuery:</strong> SQL, governança e escala do warehouse</li>
+      </ul>
+    </div>
+  </div>
+  <div class="footer"><span>TabFM no BigQuery</span><span>4</span></div>
+</section>
+
+<!-- 5 ARQUITETURA -->
+<section class="slide">
+  <div class="kicker">Como funciona no BigQuery</div>
+  <h2>Duas tabelas entram, uma tabela com previsões sai</h2>
+  <div class="flow" style="margin-bottom:24px">
+    <div class="step" style="border-color:var(--blue)"><div class="t">Tabela / query de treino</div><div class="d">features + coluna rótulo</div></div>
+    <div class="sep">+</div>
+    <div class="step" style="border-color:var(--blue)"><div class="t">Tabela / query de predição</div><div class="d">mesmas features (+ colunas extras)</div></div>
+    <div class="sep">›</div>
+    <div class="step" style="border-color:var(--aqua);background:rgba(25,158,112,.08)"><div class="t">AI.PREDICT</div><div class="d">TabFM · inferência distribuída</div></div>
+    <div class="sep">›</div>
+    <div class="step" style="border-color:var(--aqua)"><div class="t">Resultado</div><div class="d">colunas originais + <code>predicted_*</code> + probabilidades</div></div>
+  </div>
+  <div class="cols three">
+    <div class="card"><h3>Amostragem inteligente</h3><p>Se o histórico é grande, o BigQuery seleciona automaticamente os exemplos em contexto, respeitando o orçamento de memória do modelo.</p></div>
+    <div class="card"><h3>Execução paralela</h3><p>A inferência é distribuída pelos slots: <strong>milhões de linhas de predição em minutos</strong>, sem runtime para operar.</p></div>
+    <div class="card"><h3>Só SQL</h3><p>Funciona em queries, views, table functions, scheduled queries, Dataform e via BigQuery MCP server para agentes.</p></div>
+  </div>
+  <div class="footer"><span>TabFM no BigQuery</span><span>5</span></div>
+</section>
+
+<!-- 6 SINTAXE -->
+<section class="slide">
+  <div class="kicker">Sintaxe</div>
+  <h2><code>AI.PREDICT</code>: classificação de fraude em uma query</h2>
+  <div class="cols l60">
+    <pre><code><span class="k">SELECT</span> *
+<span class="k">FROM</span> <span class="f">AI.PREDICT</span>(
+  <span class="c">-- 1) exemplos rotulados (in-context)</span>
+  (<span class="k">SELECT</span> * <span class="k">EXCEPT</span>(transaction_id, customer_id, transaction_ts)
+   <span class="k">FROM</span> `proj.fraude.transactions`
+   <span class="k">WHERE</span> transaction_ts &lt; <span class="s">'2026-07-01'</span>),
+  <span class="c">-- 2) linhas a prever</span>
+  (<span class="k">SELECT</span> * <span class="k">FROM</span> `proj.fraude.transactions`
+   <span class="k">WHERE</span> transaction_ts &gt;= <span class="s">'2026-07-01'</span>),
+  <span class="c">-- 3) coluna alvo (default: 'label')</span>
+  label_col =&gt; <span class="s">'is_fraud'</span>
+);</code></pre>
+    <div>
+      <div class="card">
+        <h3>Regras que importam</h3>
+        <ul>
+          <li><strong>Toda coluna do treino que não é o rótulo vira feature.</strong> Retire IDs e timestamps com <code>EXCEPT</code>.</li>
+          <li>A tabela de predição precisa ter <strong>todas as features</strong>; pode ter colunas extras (IDs, rótulo real para avaliar).</li>
+          <li>Tipos aceitos: <code>STRING</code>, <code>BOOL</code>, <code>INT64</code>, <code>FLOAT64</code>, <code>NUMERIC</code>, <code>BIGNUMERIC</code>. Derive <code>hour_of_day</code> a partir de <code>TIMESTAMP</code>.</li>
+          <li>Aceita <code>TABLE nome</code> ou <code>(subquery)</code> nos dois argumentos.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="footer"><span>TabFM no BigQuery</span><span>6</span></div>
+</section>
+
+<!-- 7 SAÍDA -->
+<section class="slide">
+  <div class="kicker">Saída</div>
+  <h2>O que a função devolve</h2>
+  <div class="cols two">
+    <div>
+      <table>
+        <tr><th>Coluna</th><th>Tipo</th><th>Quando</th></tr>
+        <tr><td>colunas da tabela de predição</td><td>originais</td><td>sempre</td></tr>
+        <tr><td><code>predicted_&lt;label&gt;</code></td><td>mesmo tipo do rótulo</td><td>sempre</td></tr>
+        <tr><td><code>predicted_&lt;label&gt;_probs</code></td><td><code>ARRAY&lt;STRUCT&lt;label STRING, prob FLOAT64&gt;&gt;</code></td><td>classificação</td></tr>
+      </table>
+      <p class="small" style="margin-top:14px">Rótulo <code>BOOL</code> gera labels <code>'true'</code>/<code>'false'</code> no array de probabilidades.</p>
+    </div>
+    <div>
+      <h3>Extrair a probabilidade de fraude</h3>
+      <pre><code><span class="k">SELECT</span>
+  transaction_id,
+  predicted_is_fraud,
+  (<span class="k">SELECT</span> p.prob
+   <span class="k">FROM</span> <span class="k">UNNEST</span>(predicted_is_fraud_probs) p
+   <span class="k">WHERE</span> p.label = <span class="s">'true'</span>) <span class="k">AS</span> fraud_prob
+<span class="k">FROM</span> <span class="f">AI.PREDICT</span>(...);</code></pre>
+      <p style="margin-top:12px">A probabilidade permite <strong>calibrar o limiar</strong> pela capacidade da mesa de análise, em vez de aceitar o corte padrão de 0,5.</p>
+    </div>
+  </div>
+  <div class="footer"><span>TabFM no BigQuery</span><span>7</span></div>
+</section>
+
+<!-- 8 EVALUATE -->
+<section class="slide">
+  <div class="kicker">Sintaxe</div>
+  <h2><code>AI.EVALUATE</code>: qualidade com a mesma assinatura</h2>
+  <div class="cols two">
+    <div>
+      <pre><code><span class="k">SELECT</span> *
+<span class="k">FROM</span> <span class="f">AI.EVALUATE</span>(
+  (<span class="k">SELECT</span> * <span class="k">EXCEPT</span>(transaction_id, customer_id, transaction_ts)
+   <span class="k">FROM</span> `proj.fraude.transactions`
+   <span class="k">WHERE</span> transaction_ts &lt; <span class="s">'2026-07-01'</span>),
+  (<span class="k">SELECT</span> * <span class="k">EXCEPT</span>(transaction_id, customer_id, transaction_ts)
+   <span class="k">FROM</span> `proj.fraude.transactions`
+   <span class="k">WHERE</span> transaction_ts &gt;= <span class="s">'2026-07-01'</span>),
+  label_col =&gt; <span class="s">'is_fraud'</span>
+);</code></pre>
+      <p class="small" style="margin-top:10px">A segunda tabela precisa conter o rótulo real. <code>label_col</code> é obrigatório no <code>AI.EVALUATE</code>.</p>
+    </div>
+    <div>
+      <div class="card" style="margin-bottom:14px"><h3>Classificação</h3><p style="margin:0"><code>precision</code> · <code>recall</code> · <code>accuracy</code> · <code>f1_score</code></p></div>
+      <div class="card"><h3>Regressão</h3><p style="margin:0"><code>mean_absolute_error</code> · <code>mean_squared_error</code> · <code>mean_squared_log_error</code> · <code>median_absolute_error</code> · <code>r2_score</code> · <code>explained_variance</code></p></div>
+      <p style="margin-top:16px">Boa prática: <strong>split temporal</strong> (treino no passado, avaliação no período seguinte) para não superestimar o resultado.</p>
+    </div>
+  </div>
+  <div class="footer"><span>TabFM no BigQuery</span><span>8</span></div>
+</section>
+
+<!-- 9 REGRESSÃO -->
+<section class="slide">
+  <div class="kicker">Sintaxe</div>
+  <h2>Regressão: basta o rótulo ser numérico</h2>
+  <div class="cols two">
+    <div>
+      <pre><code><span class="c">-- Lifetime value do cliente (exemplo do blog)</span>
+<span class="k">SELECT</span> *
+<span class="k">FROM</span> <span class="f">AI.PREDICT</span>(
+  <span class="k">TABLE</span> `proj.crm.historical_customer_ltv`,
+  <span class="k">TABLE</span> `proj.crm.new_customers`,
+  label_col =&gt; <span class="s">'ltv'</span>
+);
+<span class="c">-- devolve predicted_ltv (FLOAT64)</span></code></pre>
+    </div>
+    <div class="card">
+      <h3>Exemplos em instituição financeira</h3>
+      <ul>
+        <li><strong>Classificação:</strong> fraude, churn, inadimplência (default), propensão a produto, contestação de chargeback, classificação de transações (até 10 classes)</li>
+        <li><strong>Regressão:</strong> LTV, valor esperado de perda, limite de crédito recomendado, ticket médio futuro, tempo até chargeback</li>
+      </ul>
+      <p class="small" style="margin-top:10px">Cuidado com vazamento: retire do treino colunas derivadas do rótulo (ex.: <code>amount_to_avg_ratio</code> ao prever <code>amount</code>).</p>
+    </div>
+  </div>
+  <div class="footer"><span>TabFM no BigQuery</span><span>9</span></div>
+</section>
+
+<!-- 10 VANTAGENS -->
+<section class="slide">
+  <div class="kicker">Por que importa</div>
+  <h2>Cinco vantagens</h2>
+  <div class="cols three">
+    <div class="card ok"><h3>1 · Zero-shot</h3><p>Da pergunta à previsão em uma query. Sem pipeline de treino, sem endpoint, sem re-treino agendado.</p></div>
+    <div class="card ok"><h3>2 · Acurácia de ponta</h3><p>Supera modelos tradicionais treinados sob medida em datasets complexos (TabArena). Featurização e tratamento de nulos automáticos.</p></div>
+    <div class="card ok"><h3>3 · Experiência simples</h3><p>Quem sabe SQL faz ML preditivo. Democratiza para analistas, engenheiros de dados e times de negócio.</p></div>
+    <div class="card ok"><h3>4 · Escala do BigQuery</h3><p>Inferência distribuída: milhões de linhas em minutos, dentro do perímetro de segurança e governança do warehouse.</p></div>
+    <div class="card ok"><h3>5 · Pronto para agentes</h3><p>Via BigQuery MCP server, um agente responde "quais clientes têm maior risco?" chamando <code>AI.PREDICT</code> como ferramenta.</p></div>
+    <div class="card accent"><h3>Complementa, não substitui</h3><p>Convive com <code>BOOSTED_TREE</code>, <code>LOGISTIC_REG</code>, AutoML e Vertex AI. O ganho é <strong>tempo até o valor</strong> e <strong>custo operacional</strong>.</p></div>
+  </div>
+  <div class="footer"><span>TabFM no BigQuery</span><span>10</span></div>
+</section>
+
+<!-- 11 DEMO CENÁRIO -->
+<section class="slide">
+  <div class="kicker">Demo</div>
+  <h2>Cenário: fraude em transações de cartão</h2>
+  <div class="stats" style="margin-bottom:24px">
+    <div class="card stat"><span class="v">120,7 mil</span><span class="l">transações · jan a jul/2026</span></div>
+    <div class="card stat"><span class="v">3,1 %</span><span class="l">taxa de fraude (3.720 casos)</span></div>
+    <div class="card stat"><span class="v">18</span><span class="l">features (limite: 20)</span></div>
+    <div class="card stat"><span class="v">20 mil</span><span class="l">clientes</span></div>
+  </div>
+  <div class="cols two">
+    <div class="card">
+      <h3>Dados sintéticos com realismo estatístico</h3>
+      <ul>
+        <li>Sinais clássicos de fraude: madrugada, e-commerce/tarja, categorias de risco, valor bimodal (teste de cartão × esvaziar limite), dispositivo novo, velocidade, falhas de autenticação, conta nova</li>
+        <li><strong>30 % das fraudes camufladas</strong> como legítimas; <strong>3 % das legítimas parecem suspeitas</strong> (viagem, compra alta)</li>
+        <li><strong>Padrão novo a partir de 01/06</strong>: micro-pagamentos por aproximação em games digitais</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Protocolo</h3>
+      <ul>
+        <li><strong>Split temporal:</strong> treino jan–jun (102,7 mil linhas) → predição julho (18 mil linhas, 807 fraudes)</li>
+        <li>Métricas oficiais com <code>AI.EVALUATE</code> + análise de negócio em SQL (limiar, fila de alertas)</li>
+        <li>Mesmo protocolo para <code>BOOSTED_TREE_CLASSIFIER</code></li>
+        <li>Tudo reproduzível no notebook Colab Enterprise</li>
+      </ul>
+    </div>
+  </div>
+  <div class="footer"><span>TabFM no BigQuery</span><span>11</span></div>
+</section>
+
+<!-- 12 RESULTADOS -->
+<section class="slide">
+  <div class="kicker">Demo · resultados</div>
+  <h2>Primeira query, sem nenhum treino</h2>
+  <div class="stats" style="margin-bottom:22px">
+    <div class="card stat"><span class="v">0,988</span><span class="l">precision (AI.EVALUATE)</span></div>
+    <div class="card stat"><span class="v">0,824</span><span class="l">recall</span></div>
+    <div class="card stat"><span class="v">0,899</span><span class="l">f1_score</span></div>
+    <div class="card stat"><span class="v">≈ 4 min</span><span class="l">AI.PREDICT · 103 mil treino / 18 mil predição</span></div>
+  </div>
+  <div class="cols two">
+    <div>
+      <h3>Limiar ajustável pela probabilidade</h3>
+      <table>
+        <tr><th>limiar</th><th>alertas</th><th>precisão</th><th>recall</th></tr>
+        <tr><td>0,10</td><td>940</td><td>0,767</td><td>0,893</td></tr>
+        <tr><td>0,30</td><td>724</td><td>0,946</td><td>0,849</td></tr>
+        <tr><td>0,50</td><td>671</td><td>0,985</td><td>0,819</td></tr>
+        <tr><td>0,90</td><td>591</td><td>1,000</td><td>0,732</td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <h3>Visão da operação: 40 alertas/dia</h3>
+      <p>Priorizando pela probabilidade, a mesa revisa <strong>1.240 alertas no mês</strong> e encontra <strong>740 das 807 fraudes (92 %)</strong>, com 60 % de precisão na fila.</p>
+      <p style="margin:0" class="small">Cálculo em SQL com <code>ROW_NUMBER() OVER (PARTITION BY dia ORDER BY fraud_prob DESC)</code>. O mesmo raciocínio serve para dimensionar equipe ou bloqueio automático.</p>
+    </div>
+  </div>
+  <div class="footer"><span>TabFM no BigQuery · números da execução de referência (dados sintéticos)</span><span>12</span></div>
+</section>
+
+<!-- 13 DRIFT -->
+<section class="slide">
+  <div class="kicker">Demo · adaptação</div>
+  <h2>Golpe novo? Mude a janela do <code>WHERE</code>, não o modelo</h2>
+  <div class="cols l40">
+    <div>
+      <p>Comparamos duas execuções sobre o <strong>mesmo julho</strong>, mudando só a janela de treino:</p>
+      <pre><code><span class="c">-- desatualizada</span>
+<span class="k">WHERE</span> transaction_ts &lt; <span class="s">'2026-06-01'</span>
+<span class="c">-- atual (inclui junho, quando o padrão surge)</span>
+<span class="k">WHERE</span> transaction_ts &lt; <span class="s">'2026-07-01'</span></code></pre>
+      <p style="margin-top:14px">Nenhum re-treino, nenhum deploy. Em produção: janela deslizante em uma view ou scheduled query.</p>
+    </div>
+    <div class="card">
+      <h3>Recall em julho por grupo de fraude</h3>
+      <div class="bars">
+        <div class="bar"><span>Padrão novo · treino jan–mai</span><div class="track"><div class="fill" style="width:13%;background:var(--ink-3)"></div></div><span class="val">13 %</span></div>
+        <div class="bar"><span>Padrão novo · treino jan–jun</span><div class="track"><div class="fill" style="width:96%;background:var(--blue)"></div></div><span class="val">96 %</span></div>
+        <div class="bar" style="margin-top:6px"><span>Padrões conhecidos · jan–mai</span><div class="track"><div class="fill" style="width:69%;background:var(--ink-3)"></div></div><span class="val">69 %</span></div>
+        <div class="bar"><span>Padrões conhecidos · jan–jun</span><div class="track"><div class="fill" style="width:68%;background:var(--blue)"></div></div><span class="val">68 %</span></div>
+      </div>
+      <div class="legend"><span><i style="background:var(--ink-3)"></i>janela desatualizada</span><span><i style="background:var(--blue)"></i>janela atual</span></div>
+      <p class="small" style="margin-top:12px">392 fraudes do padrão novo em julho. Nos padrões conhecidos o recall menor reflete as fraudes camufladas de propósito no dataset.</p>
+    </div>
+  </div>
+  <div class="footer"><span>TabFM no BigQuery · números da execução de referência (dados sintéticos)</span><span>13</span></div>
+</section>
+
+<!-- COMPARAÇÃO DEMO -->
+<section class="slide">
+  <div class="kicker">Demo · comparação</div>
+  <h2>Mesmo protocolo com <code>BOOSTED_TREE_CLASSIFIER</code></h2>
+  <div class="cols l40">
+    <div>
+      <pre><code><span class="k">CREATE OR REPLACE MODEL</span> `proj.fraude.fraud_bt`
+<span class="k">OPTIONS</span> (model_type = <span class="s">'BOOSTED_TREE_CLASSIFIER'</span>,
+         input_label_cols = [<span class="s">'is_fraud'</span>],
+         max_iterations = <span class="n">50</span>, early_stop = <span class="k">TRUE</span>) <span class="k">AS</span>
+<span class="k">SELECT</span> * <span class="k">EXCEPT</span>(transaction_id, customer_id, transaction_ts)
+<span class="k">FROM</span> `proj.fraude.transactions`
+<span class="k">WHERE</span> transaction_ts &lt; <span class="s">'2026-07-01'</span>;
+
+<span class="k">SELECT</span> * <span class="k">FROM</span> <span class="f">ML.EVALUATE</span>(<span class="k">MODEL</span> `proj.fraude.fraud_bt`, (...));
+<span class="k">SELECT</span> * <span class="k">FROM</span> <span class="f">ML.PREDICT</span>(<span class="k">MODEL</span> `proj.fraude.fraud_bt`, (...));</code></pre>
+      <p class="small" style="margin-top:12px">Três instruções, um artefato para versionar e um re-treino a agendar. Com TabFM, tudo isso é uma query.</p>
+    </div>
+    <div>
+      <table>
+        <tr><th></th><th>TabFM · <code>AI.PREDICT</code></th><th><code>BOOSTED_TREE</code></th></tr>
+        <tr><td>precision</td><td>0,988</td><td>0,971</td></tr>
+        <tr><td>recall</td><td>0,824</td><td>0,830</td></tr>
+        <tr><td>f1_score</td><td>0,899</td><td>0,895</td></tr>
+        <tr><td>AUC-ROC</td><td>0,985</td><td>0,985</td></tr>
+        <tr><td>AUC-PR</td><td>0,928</td><td>0,925</td></tr>
+        <tr><td>Tempo até a 1ª previsão</td><td><strong>≈ 4 min</strong> (uma query)</td><td>≈ 20 min de treino + <code>ML.PREDICT</code></td></tr>
+        <tr><td>Hiperparâmetros</td><td>nenhum</td><td>escolhidos à mão</td></tr>
+        <tr><td>Novo padrão de fraude</td><td>ajustar janela</td><td>re-treinar (mais 20 min) e revalidar</td></tr>
+      </table>
+      <div class="card ok" style="margin-top:16px"><h3>Leitura</h3><p style="margin:0">Qualidade equivalente, <strong>sem treino, sem tuning, sem artefato</strong>. O ganho está em tempo até o valor e em custo operacional, não em "vencer" o modelo clássico.</p></div>
+    </div>
+  </div>
+  <div class="footer"><span>TabFM no BigQuery · números da execução de referência (dados sintéticos)</span><span>14</span></div>
+</section>
+
+<!-- 14 COMPARAÇÃO -->
+<section class="slide">
+  <div class="kicker">Escolhendo a ferramenta</div>
+  <h2>TabFM × BigQuery ML treinado × Vertex AI</h2>
+  <table style="font-size:15.5px">
+    <tr><th style="width:20%"></th><th>TabFM · <code>AI.PREDICT</code></th><th>BQML treinado · <code>BOOSTED_TREE</code>, <code>LOGISTIC_REG</code>, <code>DNN</code>, <code>AUTOML</code></th><th>Vertex AI · custom / AutoML Tabular</th></tr>
+    <tr><td>Esforço</td><td>1 query SQL</td><td><code>CREATE MODEL</code> → <code>ML.EVALUATE</code> → <code>ML.PREDICT</code></td><td>pipeline, código, MLOps</td></tr>
+    <tr><td>Artefato</td><td>nenhum</td><td>modelo no dataset, versionável</td><td>modelo + endpoint</td></tr>
+    <tr><td>Hiperparâmetros</td><td>nenhum</td><td>manuais ou <code>HPARAM_TUNING</code></td><td>controle total</td></tr>
+    <tr><td>Novos padrões</td><td>ajustar janela de treino</td><td>re-treinar (scheduled) e revalidar</td><td>re-treinar pipeline</td></tr>
+    <tr><td>Explicabilidade</td><td>não há importância de features</td><td><code>ML.EXPLAIN_PREDICT</code>, <code>ML.FEATURE_IMPORTANCE</code></td><td>Explainable AI</td></tr>
+    <tr><td>Features / classes</td><td>≤ 20 features · ≤ 10 classes</td><td>centenas · sem limite prático</td><td>sem limite prático</td></tr>
+    <tr><td>Volume de treino</td><td>pequeno a médio (amostragem automática)</td><td>dezenas de milhões de linhas</td><td>ilimitado</td></tr>
+    <tr><td>Serving</td><td>lote via SQL (minutos)</td><td>lote via SQL; export para online</td><td>online de baixa latência</td></tr>
+    <tr><td>Perfil de usuário</td><td>analista, eng. de dados, agente</td><td>analista avançado, cientista</td><td>cientista / eng. de ML</td></tr>
+  </table>
+  <div class="footer"><span>TabFM no BigQuery</span><span>15</span></div>
+</section>
+
+<!-- 15 DECISÃO -->
+<section class="slide">
+  <div class="kicker">Escolhendo a ferramenta</div>
+  <h2>Quando escolher cada um</h2>
+  <div class="cols three">
+    <div class="card ok">
+      <h3><span class="pill aqua">TabFM</span></h3>
+      <ul class="check">
+        <li>Previsão rápida sem time de ML</li>
+        <li>Histórico pequeno ou médio</li>
+        <li>Dados mudam com frequência (fraude, campanhas, estoque)</li>
+        <li>Muitos problemas pequenos (um por produto, região, segmento)</li>
+        <li>Agentes e fluxos conversacionais que pedem previsão sob demanda</li>
+        <li>Prototipar em horas antes de investir em um modelo dedicado</li>
+      </ul>
+    </div>
+    <div class="card accent">
+      <h3><span class="pill blue">BQML treinado</span></h3>
+      <ul class="check">
+        <li>Mais de 20 features ou mais de 10 classes</li>
+        <li>Volume de treino muito grande</li>
+        <li>Precisa de importância de features (auditoria, regulador)</li>
+        <li>Quer controlar hiperparâmetros e reproduzir versões</li>
+        <li>Séries temporais (<code>ARIMA_PLUS</code>, <code>AI.FORECAST</code>/TimesFM), clustering, recomendação</li>
+      </ul>
+    </div>
+    <div class="card warn">
+      <h3><span class="pill orange">Vertex AI</span></h3>
+      <ul class="check">
+        <li>Inferência online com latência de milissegundos (autorização em tempo real)</li>
+        <li>Arquiteturas customizadas, deep learning, dados não tabulares</li>
+        <li>MLOps completo: pipelines, registry, monitoramento de modelo</li>
+      </ul>
+    </div>
+  </div>
+  <p class="small" style="margin-top:18px">Padrão recomendado em fraude: <strong>TabFM para scoring em lote, triagem e novos padrões</strong>; modelo treinado/online para o bloqueio em tempo real na autorização. Os dois consomem as mesmas tabelas.</p>
+  <div class="footer"><span>TabFM no BigQuery</span><span>16</span></div>
+</section>
+
+<!-- 16 OPERACIONALIZAÇÃO -->
+<section class="slide">
+  <div class="kicker">Produção</div>
+  <h2>Operacionalização</h2>
+  <div class="cols two">
+    <div>
+      <h3>Scheduled query diária com janela deslizante</h3>
+      <pre><code><span class="k">CREATE OR REPLACE TABLE</span> `proj.fraude.scores_d1` <span class="k">AS</span>
+<span class="k">SELECT</span> transaction_id, predicted_is_fraud,
+  (<span class="k">SELECT</span> p.prob <span class="k">FROM UNNEST</span>(predicted_is_fraud_probs) p
+   <span class="k">WHERE</span> p.label = <span class="s">'true'</span>) <span class="k">AS</span> fraud_prob
+<span class="k">FROM</span> <span class="f">AI.PREDICT</span>(
+  (<span class="k">SELECT</span> * <span class="k">EXCEPT</span>(transaction_id, customer_id, transaction_ts)
+   <span class="k">FROM</span> `proj.fraude.transactions_rotuladas`
+   <span class="k">WHERE</span> transaction_ts &gt;=
+     <span class="f">TIMESTAMP_SUB</span>(<span class="f">CURRENT_TIMESTAMP</span>(), <span class="k">INTERVAL</span> <span class="n">180</span> <span class="k">DAY</span>)),
+  (<span class="k">SELECT</span> * <span class="k">FROM</span> `proj.fraude.transactions_novas`
+   <span class="k">WHERE</span> <span class="f">DATE</span>(transaction_ts) = <span class="f">CURRENT_DATE</span>() - <span class="n">1</span>),
+  label_col =&gt; <span class="s">'is_fraud'</span>);</code></pre>
+    </div>
+    <div>
+      <h3>Table function para analistas e agentes</h3>
+      <pre><code><span class="k">CREATE OR REPLACE TABLE FUNCTION</span>
+  `proj.fraude.score_fraude`(ini <span class="k">TIMESTAMP</span>, fim <span class="k">TIMESTAMP</span>) <span class="k">AS</span>
+<span class="k">SELECT</span> * <span class="k">FROM</span> <span class="f">AI.PREDICT</span>(
+  (<span class="k">SELECT</span> * <span class="k">EXCEPT</span>(transaction_id, customer_id, transaction_ts)
+   <span class="k">FROM</span> `proj.fraude.transactions_rotuladas`
+   <span class="k">WHERE</span> transaction_ts &lt; ini),
+  (<span class="k">SELECT</span> * <span class="k">FROM</span> `proj.fraude.transactions`
+   <span class="k">WHERE</span> transaction_ts <span class="k">BETWEEN</span> ini <span class="k">AND</span> fim),
+  label_col =&gt; <span class="s">'is_fraud'</span>);</code></pre>
+      <div class="card" style="margin-top:14px"><h3>Agentes via BigQuery MCP server</h3><p style="margin:0">Gemini, ADK ou qualquer cliente MCP chama a função como ferramenta. Sem runtime de ML para operar: dados entram, previsões saem.</p></div>
+    </div>
+  </div>
+  <div class="footer"><span>TabFM no BigQuery</span><span>17</span></div>
+</section>
+
+<!-- 17 CUSTO E LIMITES -->
+<section class="slide">
+  <div class="kicker">Antes de adotar</div>
+  <h2>Custo e limitações (Preview)</h2>
+  <div class="cols two">
+    <div class="card">
+      <h3>Cobrança</h3>
+      <ul>
+        <li><strong>Edições Enterprise / Enterprise Plus:</strong> cobrado em slots</li>
+        <li><strong>On-demand:</strong> cobrado por bytes processados</li>
+        <li><strong>A partir de 30/10/2026:</strong> cobrança por tokens consumidos pelo TabFM + slots/bytes do restante da query</li>
+        <li>Recomendação: medir <code>total_bytes_processed</code> e slot-ms nas execuções piloto e projetar para o volume diário</li>
+      </ul>
+    </div>
+    <div class="card warn">
+      <h3>Limites atuais</h3>
+      <ul class="cross">
+        <li>Até <strong>20 colunas de feature</strong> (mais: <code>bqml-feedback@google.com</code>)</li>
+        <li>Classificação em até <strong>10 classes</strong></li>
+        <li>Tipos: <code>STRING</code>, <code>BOOL</code>, <code>INT64</code>, <code>FLOAT64</code>, <code>NUMERIC</code>, <code>BIGNUMERIC</code>. Sem <code>TIMESTAMP</code>, <code>ARRAY</code>, <code>STRUCT</code>, <code>GEOGRAPHY</code></li>
+        <li>Sem importância de features nativa</li>
+        <li>Treino grande é amostrado; para dezenas de milhões de linhas, prefira modelo treinado</li>
+        <li>Inferência em lote (minutos); não é endpoint online</li>
+        <li>Preview: termos Pre-GA, suporte limitado</li>
+      </ul>
+    </div>
+  </div>
+  <div class="footer"><span>TabFM no BigQuery</span><span>18</span></div>
+</section>
+
+<!-- 18 PRÓXIMOS PASSOS -->
+<section class="slide">
+  <div class="kicker">Plano</div>
+  <h2>Próximos passos sugeridos</h2>
+  <div class="flow" style="margin-bottom:26px">
+    <div class="step"><div class="t">Semana 1</div><div class="d">Habilitar preview no projeto · escolher 1 caso de uso com rótulo disponível</div></div><div class="sep">›</div>
+    <div class="step"><div class="t">Semana 2</div><div class="d">Preparar tabela com ≤ 20 features · rodar <code>AI.EVALUATE</code> com split temporal</div></div><div class="sep">›</div>
+    <div class="step"><div class="t">Semana 3</div><div class="d">Comparar com modelo atual · calibrar limiar com a operação</div></div><div class="sep">›</div>
+    <div class="step"><div class="t">Semana 4</div><div class="d">Scheduled query em produção paralela (shadow) · medir custo</div></div>
+  </div>
+  <div class="cols two">
+    <div class="card"><h3>Candidatos típicos em instituição financeira</h3><ul><li>Fraude em cartão, PIX e onboarding (triagem em lote)</li><li>Churn e propensão a produto por segmento</li><li>Inadimplência em cobrança preventiva</li><li>Regressão de LTV e valor esperado de perda</li></ul></div>
+    <div class="card accent"><h3>O que levar desta sessão</h3><ul><li>ML preditivo virou uma função SQL</li><li>Novos padrões: muda a janela, não o modelo</li><li>Complementa BQML e Vertex, cada um no seu lugar</li><li>Notebook pronto para reproduzir com seus dados</li></ul></div>
+  </div>
+  <div class="footer"><span>TabFM no BigQuery</span><span>19</span></div>
+</section>
+
+<!-- 19 REFERÊNCIAS -->
+<section class="slide">
+  <div class="kicker">Referências</div>
+  <h2>Para saber mais</h2>
+  <div class="card">
+    <ul style="font-size:18px;line-height:1.9">
+      <li>Documentação <code>AI.PREDICT</code>: <a style="color:var(--blue)" href="https://docs.cloud.google.com/bigquery/docs/reference/standard-sql/bigqueryml-syntax-ai-predict">docs.cloud.google.com/bigquery/docs/reference/standard-sql/bigqueryml-syntax-ai-predict</a></li>
+      <li>Documentação <code>AI.EVALUATE</code>: <a style="color:var(--blue)" href="https://docs.cloud.google.com/bigquery/docs/reference/standard-sql/bigqueryml-syntax-ai-evaluate">docs.cloud.google.com/bigquery/docs/reference/standard-sql/bigqueryml-syntax-ai-evaluate</a></li>
+      <li>Blog: <a style="color:var(--blue)" href="https://cloud.google.com/blog/products/data-analytics/tabfm-adds-predictive-ml-to-bigquery">Introducing TabFM in BigQuery: Predictive analytics reimagined</a></li>
+      <li>Google Research: <a style="color:var(--blue)" href="https://research.google/blog/introducing-tabfm-a-zero-shot-foundation-model-for-tabular-data/">TabFM: a zero-shot foundation model for tabular data</a></li>
+      <li>Benchmark: <a style="color:var(--blue)" href="https://huggingface.co/spaces/TabArena/leaderboard">TabArena leaderboard</a></li>
+      <li>Suporte no preview: <code>bqml-feedback@google.com</code></li>
+    </ul>
+  </div>
+  <p class="small" style="margin-top:20px">Navegação: setas ← → , espaço, ou clique nos botões. <kbd>F</kbd> alterna tela cheia. Imprima em PDF com Ctrl/Cmd+P.</p>
+  <div class="footer"><span>TabFM no BigQuery</span><span>20</span></div>
+</section>
+
+</div>
+<div class="nav"><button id="prev">‹ anterior</button><button id="next">próximo ›</button></div>
+<script>
+(function(){
+  const slides=[...document.querySelectorAll('.slide')];let i=0;
+  const hash=parseInt(location.hash.slice(1));if(!isNaN(hash)&&hash>=1&&hash<=slides.length)i=hash-1;
+  function show(n){i=Math.max(0,Math.min(slides.length-1,n));slides.forEach((s,k)=>s.classList.toggle('active',k===i));
+    document.getElementById('progress').style.width=((i+1)/slides.length*100)+'%';history.replaceState(null,'','#'+(i+1));}
+  document.getElementById('prev').onclick=()=>show(i-1);document.getElementById('next').onclick=()=>show(i+1);
+  addEventListener('keydown',e=>{if(['ArrowRight','PageDown',' '].includes(e.key)){e.preventDefault();show(i+1)}
+    else if(['ArrowLeft','PageUp'].includes(e.key)){e.preventDefault();show(i-1)}
+    else if(e.key==='Home')show(0);else if(e.key==='End')show(slides.length-1);
+    else if(e.key.toLowerCase()==='f'){document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen()}});
+  show(i);
+})();
+</script>
+</body>
+</html>
